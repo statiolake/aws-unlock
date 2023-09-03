@@ -20,7 +20,6 @@ pub struct Entry {
 
 impl<'a> EntryLineParser<'a> {
     pub fn new(lines: Vec<EntryLine<'a>>) -> Self {
-        dbg!(&lines);
         Self { lines, index: 0 }
     }
 

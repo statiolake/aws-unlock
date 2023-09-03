@@ -46,23 +46,26 @@ impl<'a> EntryLineLexer<'a> {
 }
 
 fn tokenize_commented(line: &str) -> EntryLine {
-    let line = line.trim()[1..].trim();
-    if line == "production" {
+    let trimmed = line.trim()[1..].trim();
+    if trimmed == "production" {
         EntryLine::ProductionMarker
-    } else if line.starts_with('[') && line.ends_with(']') {
+    } else if trimmed.starts_with('[') && trimmed.ends_with(']') {
         // Header
-        EntryLine::LockedHeader(&line[1..line.len() - 1])
-    } else if line.contains('=') {
+        EntryLine::LockedHeader(&trimmed[1..trimmed.len() - 1])
+    } else if trimmed.contains('=') {
         // Option
-        let [key, value]: [&str; 2] = line
+        let [key, value]: [&str; 2] = trimmed
             .splitn(2, '=')
             .collect::<Vec<_>>()
             .try_into()
             .expect("should always be splitted to two entries");
+        let key = key.trim_end();
+        let value = value.trim_start();
         EntryLine::LockedOption(key, value)
     } else {
         // Simple Comment
-        EntryLine::Comment(&line[1..])
+        let start = if line.trim().starts_with("# ") { 2 } else { 1 };
+        EntryLine::Comment(&line[start..])
     }
 }
 

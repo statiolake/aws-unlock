@@ -11,31 +11,31 @@ use crate::{line_lexer::EntryLineLexer, line_parser::EntryLineParser};
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AwsProfile {
     /// Comment lines in config file.
-    config_comments: Vec<String>,
+    pub config_comments: Vec<String>,
 
     /// Comment lines in credentials file.
-    credentials_comments: Vec<String>,
+    pub credentials_comments: Vec<String>,
 
     /// Whether this profile is for production environment or not.
-    is_production: bool,
+    pub is_production: bool,
 
     /// Whether this profile is currently locked or not.
-    is_locked: bool,
+    pub is_locked: bool,
 
     /// The profile name. None if it is default profile.
-    name: Option<String>,
+    pub name: Option<String>,
 
     /// `region` in ~/.aws/config.
-    region: Option<String>,
+    pub region: Option<String>,
 
     /// `output` in ~/.aws/config.
-    output: Option<String>,
+    pub output: Option<String>,
 
     /// `aws_access_key_id` in ~/.aws/credentials.
-    aws_access_key_id: String,
+    pub aws_access_key_id: String,
 
     /// `aws_secret_access_key` in ~/.aws/credentials.
-    aws_secret_access_key: String,
+    pub aws_secret_access_key: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -82,6 +82,13 @@ impl AwsFile {
             config,
             credentials,
         })
+    }
+
+    pub fn flush(&mut self) -> Result<()> {
+        self.config.flush()?;
+        self.credentials.flush()?;
+
+        Ok(())
     }
 
     pub fn parse(&mut self) -> Result<Vec<AwsProfile>> {
@@ -234,6 +241,7 @@ impl AwsFile {
 
     fn write_config(&mut self, config: &[AwsConfig]) -> Result<()> {
         self.config.seek(SeekFrom::Start(0))?;
+        self.config.set_len(0)?;
 
         let mut first = true;
         for conf in config {
@@ -271,6 +279,7 @@ impl AwsFile {
 
     fn write_credentials(&mut self, credentials: &[AwsCredential]) -> Result<()> {
         self.credentials.seek(SeekFrom::Start(0))?;
+        self.credentials.set_len(0)?;
 
         let mut first = true;
         for cred in credentials {
