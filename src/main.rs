@@ -5,7 +5,7 @@ use clap::{CommandFactory, Parser};
 use itertools::Itertools;
 use std::time::Duration;
 
-const UNLOCK_DURATION: Duration = Duration::from_secs(10);
+const UNLOCK_DURATION: Duration = Duration::from_secs(60);
 
 #[derive(clap::Parser)]
 struct Args {
