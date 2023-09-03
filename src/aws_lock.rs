@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io::{stdin, stdout, Write},
+};
 
 use anyhow::{bail, Result};
 use itertools::Itertools;
@@ -11,8 +14,17 @@ pub struct AwsLockGuard<'a> {
 }
 
 impl<'a> AwsLockGuard<'a> {
-    pub fn unlock(target_profiles: &'a [Option<String>]) -> Result<Self> {
-        modify_lock_status(target_profiles, true, false)?;
+    pub fn unlock(
+        target_profiles: &'a [Option<String>],
+        error_if_not_exist: bool,
+        warn_on_production: bool,
+    ) -> Result<Self> {
+        modify_lock_status(
+            target_profiles,
+            error_if_not_exist,
+            warn_on_production,
+            false,
+        )?;
         Ok(Self { target_profiles })
     }
 
@@ -23,13 +35,14 @@ impl<'a> AwsLockGuard<'a> {
 
 impl Drop for AwsLockGuard<'_> {
     fn drop(&mut self) {
-        let _ = modify_lock_status(self.target_profiles, false, true);
+        let _ = modify_lock_status(self.target_profiles, false, false, true);
     }
 }
 
 fn modify_lock_status(
     target_profiles: &[Option<String>],
-    error_if_not_exists: bool,
+    error_if_not_exist: bool,
+    warn_on_production: bool,
     lock: bool,
 ) -> Result<()> {
     let mut aws_file = AwsFile::open()?;
@@ -41,7 +54,7 @@ fn modify_lock_status(
         .map(|(index, profile)| (profile.name.clone(), index))
         .collect();
 
-    if error_if_not_exists {
+    if error_if_not_exist {
         // Check profiles exist if non-existence is explicit error
         let unknown_profiles: Vec<_> = target_profiles
             .iter()
@@ -56,6 +69,31 @@ fn modify_lock_status(
                     .map(|s| format!("'{}'", s.as_deref().unwrap_or("default")))
                     .format(", ")
             );
+        }
+    }
+
+    if warn_on_production {
+        // Warn if target profile contains production profile
+        let production_profiles: Vec<_> = target_profiles
+            .iter()
+            .filter(|name| profile_indices.contains_key(name))
+            .filter(|name| profiles[profile_indices[name]].is_production)
+            .collect();
+
+        if !production_profiles.is_empty() {
+            print!(
+                "You are unlocking production profiles: {}. Are you sure? (y/N) ",
+                production_profiles
+                    .into_iter()
+                    .map(|s| format!("'{}'", s.as_deref().unwrap_or("default")))
+                    .format(", ")
+            );
+            stdout().flush()?;
+            let mut buf = String::new();
+            stdin().read_line(&mut buf)?;
+            if !["y", "Y"].contains(&buf.trim()) {
+                bail!("Unlocking production profiles cancelled by user");
+            }
         }
     }
 

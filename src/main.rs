@@ -3,8 +3,7 @@ use aws_unlock::{aws_lock::AwsLockGuard, aws_profile::AwsFile};
 use cancellable_timer::Timer;
 use clap::{CommandFactory, Parser};
 use itertools::Itertools;
-use std::thread::sleep;
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 const UNLOCK_DURATION: Duration = Duration::from_secs(10);
 
@@ -58,7 +57,7 @@ fn main() -> Result<()> {
         }
     })?;
 
-    let _guard = AwsLockGuard::unlock(&target_profiles);
+    let _guard = AwsLockGuard::unlock(&target_profiles, true, !is_silent)?;
 
     may_println!(
         args.silent,
