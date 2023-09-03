@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"
+cancellable-timer = "0.1.0"
 clap = { version = "4.4.1", features = ["derive"] }
+ctrlc = "3.4.0"
 home = "0.5.5"
 itertools = "0.11.0"

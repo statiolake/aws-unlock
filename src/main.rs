@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
-use aws_unlock::aws_profile::AwsFile;
+use aws_unlock::{aws_lock::AwsLockGuard, aws_profile::AwsFile};
+use cancellable_timer::Timer;
 use clap::{CommandFactory, Parser};
 use itertools::Itertools;
 use std::thread::sleep;
@@ -38,6 +39,8 @@ fn main() -> Result<()> {
         bail!("no target profiles are specified.");
     }
 
+    let is_silent = args.silent;
+
     // Convert 'default' profile to None profile
     let target_profiles: Vec<_> = args
         .target_profiles
@@ -45,7 +48,17 @@ fn main() -> Result<()> {
         .map(|name| if name == "default" { None } else { Some(name) })
         .collect();
 
-    modify_lock_status(&target_profiles, true, false)?;
+    // prepare timer
+    let (mut timer, canceller) = Timer::new2()?;
+
+    ctrlc::set_handler(move || {
+        may_println!(is_silent, "Ctrl+C detected. Locking soon...");
+        if let Err(e) = canceller.cancel() {
+            may_println!(is_silent, "cancellation failed! reason: {}", e);
+        }
+    })?;
+
+    let _guard = AwsLockGuard::unlock(&target_profiles);
 
     may_println!(
         args.silent,
@@ -56,9 +69,10 @@ fn main() -> Result<()> {
             .format(", "),
         UNLOCK_DURATION.as_secs()
     );
-    sleep(UNLOCK_DURATION);
 
-    modify_lock_status(&target_profiles, false, true)?;
+    if timer.sleep(UNLOCK_DURATION).is_err() {
+        may_println!(is_silent, "timer cancelled.");
+    }
 
     Ok(())
 }
@@ -70,51 +84,6 @@ fn lock_all() -> Result<()> {
         .iter_mut()
         .for_each(|profile| profile.is_locked = true);
     aws_file.write(&profiles)?;
-
-    Ok(())
-}
-
-fn modify_lock_status(
-    target_profiles: &[Option<String>],
-    error_if_not_exists: bool,
-    lock: bool,
-) -> Result<()> {
-    let mut aws_file = AwsFile::open()?;
-
-    let mut profiles = aws_file.parse()?;
-    let profile_indices: HashMap<_, _> = profiles
-        .iter()
-        .enumerate()
-        .map(|(index, profile)| (profile.name.clone(), index))
-        .collect();
-
-    if error_if_not_exists {
-        // Check profiles exist if non-existence is explicit error
-        let unknown_profiles: Vec<_> = target_profiles
-            .iter()
-            .filter(|name| !profile_indices.contains_key(name))
-            .collect();
-
-        if !unknown_profiles.is_empty() {
-            bail!(
-                "unknown profiles: {}",
-                unknown_profiles
-                    .into_iter()
-                    .map(|s| format!("'{}'", s.as_deref().unwrap_or("default")))
-                    .format(", ")
-            );
-        }
-    }
-
-    // Lock target profiles
-    target_profiles
-        .iter()
-        .filter(|name| profile_indices.contains_key(name))
-        .for_each(|name| profiles[profile_indices[name]].is_locked = lock);
-
-    // Write to file
-    aws_file.write(&profiles)?;
-    aws_file.flush()?;
 
     Ok(())
 }
