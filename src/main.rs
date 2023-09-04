@@ -5,8 +5,6 @@ use clap::{CommandFactory, Parser};
 use itertools::Itertools;
 use std::time::Duration;
 
-const UNLOCK_DURATION: Duration = Duration::from_secs(60);
-
 #[derive(clap::Parser)]
 struct Args {
     #[clap(long, default_value_t = false)]
@@ -14,6 +12,9 @@ struct Args {
 
     #[clap(long, default_value_t = false)]
     lock_all: bool,
+
+    #[clap(long, default_value_t = 60)]
+    seconds: u64,
 
     target_profiles: Vec<String>,
 }
@@ -66,10 +67,10 @@ fn main() -> Result<()> {
             .iter()
             .map(|s| format!("'{}'", s.as_deref().unwrap_or("default")))
             .format(", "),
-        UNLOCK_DURATION.as_secs()
+        args.seconds
     );
 
-    if timer.sleep(UNLOCK_DURATION).is_err() {
+    if timer.sleep(Duration::from_secs(args.seconds)).is_err() {
         may_println!(is_silent, "timer cancelled.");
     }
 
