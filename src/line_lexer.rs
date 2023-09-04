@@ -83,6 +83,8 @@ fn tokenize_uncommented(line: &str) -> Result<EntryLine> {
         let key = key.trim_end();
         let value = value.trim_start();
         Ok(EntryLine::Option(key, value))
+    } else if line.trim() == "" {
+        Ok(EntryLine::Empty)
     } else {
         bail!("unexpected line: {:?}", line);
     }

@@ -92,32 +92,38 @@ impl AwsFile {
     }
 
     pub fn parse(&mut self) -> Result<Vec<AwsProfile>> {
-        let mut config: HashMap<_, _> = self
-            .parse_config()?
+        let config = self.parse_config()?;
+        let config_names: Vec<_> = config.iter().map(|conf| conf.name.clone()).collect();
+        let mut config: HashMap<_, _> = config
             .into_iter()
             .map(|conf| (conf.name.clone(), conf))
             .collect();
-        let mut credentials: HashMap<_, _> = self
-            .parse_credentials()?
+
+        let credentials = self.parse_credentials()?;
+        let credentials_names: Vec<_> = credentials.iter().map(|cred| cred.name.clone()).collect();
+        let mut credentials: HashMap<_, _> = credentials
             .into_iter()
             .map(|cred| (cred.name.clone(), cred))
             .collect();
-        let names: HashSet<_> = config
-            .keys()
-            .cloned()
-            .chain(credentials.keys().cloned())
-            .collect();
+
+        let mut names = vec![];
+        let mut inserted = HashSet::new();
+        for name in config_names.iter().chain(&credentials_names) {
+            if inserted.insert(name) {
+                names.push(name);
+            }
+        }
 
         names
             .into_iter()
             .map(|name| {
-                let conf = config.remove(&name).ok_or_else(|| {
+                let conf = config.remove(name).ok_or_else(|| {
                     anyhow!(
                         "config '{}' not found",
                         name.as_deref().unwrap_or("default")
                     )
                 })?;
-                let cred = credentials.remove(&name).ok_or_else(|| {
+                let cred = credentials.remove(name).ok_or_else(|| {
                     anyhow!(
                         "credentials '{}' not found",
                         name.as_deref().unwrap_or("default")
@@ -129,7 +135,7 @@ impl AwsFile {
                     credentials_comments: cred.comments,
                     is_production: conf.is_production || cred.is_production,
                     is_locked: conf.is_locked || cred.is_locked,
-                    name,
+                    name: name.clone(),
                     region: conf.region,
                     output: conf.output,
                     aws_access_key_id: cred.aws_access_key_id,
