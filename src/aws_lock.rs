@@ -6,16 +6,16 @@ use std::{
 use anyhow::{bail, Result};
 use itertools::Itertools;
 
-use crate::aws_profile::AwsFile;
+use crate::aws_profile::{AwsFile, ProfileName};
 
 #[derive(Debug)]
 pub struct AwsLockGuard<'a> {
-    target_profiles: &'a [Option<String>],
+    target_profiles: &'a [ProfileName],
 }
 
 impl<'a> AwsLockGuard<'a> {
     pub fn unlock(
-        target_profiles: &'a [Option<String>],
+        target_profiles: &'a [ProfileName],
         error_if_not_exist: bool,
         warn_on_production: bool,
     ) -> Result<Self> {
@@ -40,7 +40,7 @@ impl Drop for AwsLockGuard<'_> {
 }
 
 fn modify_lock_status(
-    target_profiles: &[Option<String>],
+    target_profiles: &[ProfileName],
     error_if_not_exist: bool,
     warn_on_production: bool,
     lock: bool,
@@ -66,7 +66,7 @@ fn modify_lock_status(
                 "unknown profiles: {}",
                 unknown_profiles
                     .into_iter()
-                    .map(|s| format!("'{}'", s.as_deref().unwrap_or("default")))
+                    .map(|s| format!("'{s}'"))
                     .format(", ")
             );
         }
@@ -85,7 +85,7 @@ fn modify_lock_status(
                 "You are unlocking production profiles: {}. Are you sure? (y/N) ",
                 production_profiles
                     .into_iter()
-                    .map(|s| format!("'{}'", s.as_deref().unwrap_or("default")))
+                    .map(|s| format!("'{s}'"))
                     .format(", ")
             );
             stdout().flush()?;

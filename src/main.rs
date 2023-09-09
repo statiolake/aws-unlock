@@ -19,6 +19,9 @@ struct Args {
     seconds: u64,
 
     target_profiles: Vec<String>,
+
+    #[clap(last(true))]
+    commands: Vec<String>,
 }
 
 macro_rules! may_print {
@@ -64,11 +67,7 @@ async fn main() -> Result<()> {
     let is_silent = args.silent;
 
     // Convert 'default' profile to None profile
-    let target_profiles: Vec<_> = args
-        .target_profiles
-        .into_iter()
-        .map(|name| if name == "default" { None } else { Some(name) })
-        .collect();
+    let target_profiles: Vec<_> = args.target_profiles.into_iter().map(Into::into).collect();
 
     // prepare timer
     let (timer, canceller) = ObservableTimer::new()?;
@@ -87,7 +86,7 @@ async fn main() -> Result<()> {
         "unlock profiles {} for {} seconds...",
         target_profiles
             .iter()
-            .map(|s| format!("'{}'", s.as_deref().unwrap_or("default")))
+            .map(|s| format!("'{s}'"))
             .format(", "),
         args.seconds
     );
