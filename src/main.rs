@@ -1,9 +1,14 @@
 use anyhow::{bail, Result};
-use aws_unlock::{aws_lock::AwsLockGuard, aws_profile::AwsFile, timer::ObservableTimer};
+use aws_unlock::{
+    aws_lock::AwsLockGuard,
+    aws_profile::{AwsFile, ProfileName},
+    timer::ObservableTimer,
+};
 use clap::{CommandFactory, Parser};
 use itertools::Itertools;
 use std::{
     io::{stdout, Write},
+    process::{exit, Command},
     time::Duration,
 };
 
@@ -69,48 +74,19 @@ async fn main() -> Result<()> {
     // Convert 'default' profile to None profile
     let target_profiles: Vec<_> = args.target_profiles.into_iter().map(Into::into).collect();
 
-    // prepare timer
-    let (timer, canceller) = ObservableTimer::new()?;
-
-    ctrlc::set_handler(move || {
-        may_println!(is_silent, "Ctrl+C detected. Locking soon...");
-        if let Err(e) = canceller.cancel() {
-            may_println!(is_silent, "cancellation failed! reason: {}", e);
-        }
-    })?;
-
-    let _guard = AwsLockGuard::unlock(&target_profiles, true, !is_silent)?;
-
-    may_println!(
-        args.silent,
-        "unlock profiles {} for {} seconds...",
-        target_profiles
-            .iter()
-            .map(|s| format!("'{s}'"))
-            .format(", "),
-        args.seconds
-    );
-
-    let res = timer
-        .sleep(
+    if args.commands.is_empty() {
+        unlock_during_specified_duration(
+            is_silent,
+            &target_profiles,
             Duration::from_secs(args.seconds),
-            Duration::from_millis(1000),
-            |remaining| {
-                may_print!(
-                    is_silent,
-                    "\r{} seconds remaining... ",
-                    remaining.as_secs_f64().ceil()
-                );
-            },
         )
-        .await;
+        .await?;
 
-    match res {
-        Ok(_) => may_println!(is_silent,),
-        Err(_) => may_println!(is_silent, "timer cancelled"),
+        exit(0);
+    } else {
+        let code = unlock_during_commands(is_silent, &target_profiles, args.commands)?;
+        exit(code);
     }
-
-    Ok(())
 }
 
 fn lock_all() -> Result<()> {
@@ -122,4 +98,73 @@ fn lock_all() -> Result<()> {
     aws_file.write(&profiles)?;
 
     Ok(())
+}
+
+async fn unlock_during_specified_duration(
+    is_silent: bool,
+    target_profiles: &[ProfileName],
+    dur: Duration,
+) -> Result<()> {
+    // prepare timer
+    let (timer, canceller) = ObservableTimer::new()?;
+
+    ctrlc::set_handler(move || {
+        may_println!(is_silent, "Ctrl+C detected. Locking soon...");
+        if let Err(e) = canceller.cancel() {
+            may_println!(is_silent, "cancellation failed! reason: {}", e);
+        }
+    })?;
+
+    let _guard = AwsLockGuard::unlock(target_profiles, true, !is_silent)?;
+
+    may_println!(
+        is_silent,
+        "unlock profiles {} for {} seconds...",
+        target_profiles
+            .iter()
+            .map(|s| format!("'{s}'"))
+            .format(", "),
+        dur.as_secs(),
+    );
+
+    let res = timer
+        .sleep(dur, Duration::from_millis(1000), |remaining| {
+            may_print!(
+                is_silent,
+                "\r{} seconds remaining... ",
+                remaining.as_secs_f64().ceil()
+            );
+        })
+        .await;
+
+    match res {
+        Ok(_) => may_println!(is_silent),
+        Err(_) => may_println!(is_silent, "timer cancelled"),
+    }
+
+    Ok(())
+}
+
+fn unlock_during_commands(
+    is_silent: bool,
+    target_profiles: &[ProfileName],
+    commands: Vec<String>,
+) -> Result<i32> {
+    let _guard = AwsLockGuard::unlock(target_profiles, true, !is_silent)?;
+
+    ctrlc::set_handler(move || {
+        // Signaling SIGINT to all group processes is the job of the terminal. All we have to do
+        // here is to wait for child process to gracefully finish.
+        may_println!(
+            is_silent,
+            "Ctrl+C detected. Waiting for command to finish..."
+        );
+    })?;
+
+    let mut child = Command::new(commands[0].as_str())
+        .args(&commands[1..])
+        .spawn()?;
+    let status = child.wait()?;
+
+    Ok(status.code().unwrap_or(1))
 }
