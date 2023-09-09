@@ -6,16 +6,16 @@ use std::{
 use anyhow::{bail, Result};
 use itertools::Itertools;
 
-use crate::aws_profile::AwsFile;
+use crate::aws_profile::{AwsFile, ProfileName};
 
 #[derive(Debug)]
 pub struct AwsLockGuard<'a> {
-    target_profiles: &'a [Option<String>],
+    target_profiles: &'a [ProfileName],
 }
 
 impl<'a> AwsLockGuard<'a> {
     pub fn unlock(
-        target_profiles: &'a [Option<String>],
+        target_profiles: &'a [ProfileName],
         error_if_not_exist: bool,
         warn_on_production: bool,
     ) -> Result<Self> {
@@ -39,8 +39,47 @@ impl Drop for AwsLockGuard<'_> {
     }
 }
 
+pub fn check_current_lock_status(
+    target_profiles: &[ProfileName],
+) -> Result<(Vec<ProfileName>, Vec<ProfileName>)> {
+    let mut locked_profiles = vec![];
+    let mut unlocked_profiles = vec![];
+
+    let mut aws_file = AwsFile::open()?;
+    let profiles = aws_file.parse()?;
+
+    // check all target profiles exist
+    let mut unknown_profiles = vec![];
+    for profile in target_profiles {
+        if !profiles.iter().any(|p| p.name == *profile) {
+            unknown_profiles.push(profile.clone());
+        }
+    }
+    if !unknown_profiles.is_empty() {
+        bail!(
+            "some target profiles not found: {}",
+            unknown_profiles
+                .iter()
+                .map(|s| format!("'{s}'"))
+                .format(", ")
+        )
+    }
+
+    for profile in profiles {
+        if target_profiles.contains(&profile.name) {
+            if profile.is_locked {
+                locked_profiles.push(profile.name)
+            } else {
+                unlocked_profiles.push(profile.name)
+            }
+        }
+    }
+
+    Ok((locked_profiles, unlocked_profiles))
+}
+
 fn modify_lock_status(
-    target_profiles: &[Option<String>],
+    target_profiles: &[ProfileName],
     error_if_not_exist: bool,
     warn_on_production: bool,
     lock: bool,
@@ -66,7 +105,7 @@ fn modify_lock_status(
                 "unknown profiles: {}",
                 unknown_profiles
                     .into_iter()
-                    .map(|s| format!("'{}'", s.as_deref().unwrap_or("default")))
+                    .map(|s| format!("'{s}'"))
                     .format(", ")
             );
         }
@@ -85,7 +124,7 @@ fn modify_lock_status(
                 "You are unlocking production profiles: {}. Are you sure? (y/N) ",
                 production_profiles
                     .into_iter()
-                    .map(|s| format!("'{}'", s.as_deref().unwrap_or("default")))
+                    .map(|s| format!("'{s}'"))
                     .format(", ")
             );
             stdout().flush()?;

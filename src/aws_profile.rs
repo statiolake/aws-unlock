@@ -2,11 +2,40 @@ use anyhow::{anyhow, bail, Result};
 use home::home_dir;
 use std::{
     collections::{HashMap, HashSet},
+    fmt,
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
 };
 
 use crate::{line_lexer::EntryLineLexer, line_parser::EntryLineParser};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ProfileName {
+    Default,
+    Named(String),
+}
+
+impl<S> From<S> for ProfileName
+where
+    S: AsRef<str> + Into<String>,
+{
+    fn from(value: S) -> Self {
+        if value.as_ref() == "default" {
+            ProfileName::Default
+        } else {
+            ProfileName::Named(value.into())
+        }
+    }
+}
+
+impl fmt::Display for ProfileName {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ProfileName::Default => write!(b, "default"),
+            ProfileName::Named(name) => write!(b, "{name}"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AwsProfile {
@@ -23,7 +52,7 @@ pub struct AwsProfile {
     pub is_locked: bool,
 
     /// The profile name. None if it is default profile.
-    pub name: Option<String>,
+    pub name: ProfileName,
 
     /// `region` in ~/.aws/config.
     pub region: Option<String>,
@@ -43,7 +72,7 @@ struct AwsConfig {
     comments: Vec<String>,
     is_production: bool,
     is_locked: bool,
-    name: Option<String>,
+    name: ProfileName,
     region: Option<String>,
     output: Option<String>,
 }
@@ -53,7 +82,7 @@ struct AwsCredential {
     comments: Vec<String>,
     is_production: bool,
     is_locked: bool,
-    name: Option<String>,
+    name: ProfileName,
     aws_access_key_id: String,
     aws_secret_access_key: String,
 }
@@ -117,18 +146,12 @@ impl AwsFile {
         names
             .into_iter()
             .map(|name| {
-                let conf = config.remove(name).ok_or_else(|| {
-                    anyhow!(
-                        "config '{}' not found",
-                        name.as_deref().unwrap_or("default")
-                    )
-                })?;
-                let cred = credentials.remove(name).ok_or_else(|| {
-                    anyhow!(
-                        "credentials '{}' not found",
-                        name.as_deref().unwrap_or("default")
-                    )
-                })?;
+                let conf = config
+                    .remove(name)
+                    .ok_or_else(|| anyhow!("config '{name}' not found",))?;
+                let cred = credentials
+                    .remove(name)
+                    .ok_or_else(|| anyhow!("credentials '{name}' not found",))?;
 
                 Ok(AwsProfile {
                     config_comments: conf.comments,
@@ -157,10 +180,10 @@ impl AwsFile {
             .into_iter()
             .map(|entry| {
                 let name = if entry.header == "default" {
-                    None
+                    ProfileName::Default
                 } else {
                     match *entry.header.splitn(2, ' ').collect::<Vec<_>>() {
-                        [lit_profile, name] if lit_profile == "profile" => Some(name.to_string()),
+                        [lit_profile, name] if lit_profile == "profile" => name.into(),
                         _ => bail!("unexpected header in your config: {:?}", entry.header),
                     }
                 };
@@ -189,7 +212,7 @@ impl AwsFile {
         entries
             .into_iter()
             .map(|entry| {
-                let name = Some(entry.header).filter(|h| h != "default");
+                let name = entry.header.into();
                 let aws_access_key_id = entry
                     .values
                     .get("aws_access_key_id")
@@ -267,8 +290,10 @@ impl AwsFile {
             let locked_prefix = if conf.is_locked { "# " } else { "" };
 
             match &conf.name {
-                Some(name) => writeln!(self.config, "{}[profile {}]", locked_prefix, name)?,
-                None => writeln!(self.config, "{}[default]", locked_prefix)?,
+                ProfileName::Named(name) => {
+                    writeln!(self.config, "{}[profile {}]", locked_prefix, name)?
+                }
+                ProfileName::Default => writeln!(self.config, "{}[default]", locked_prefix)?,
             }
 
             if let Some(region) = &conf.region {
@@ -304,12 +329,7 @@ impl AwsFile {
 
             let locked_prefix = if cred.is_locked { "# " } else { "" };
 
-            writeln!(
-                self.credentials,
-                "{}[{}]",
-                locked_prefix,
-                cred.name.as_deref().unwrap_or("default")
-            )?;
+            writeln!(self.credentials, "{}[{}]", locked_prefix, cred.name)?;
             writeln!(
                 self.credentials,
                 "{}aws_access_key_id = {}",
