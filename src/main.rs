@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use aws_unlock::{
-    aws_lock::AwsLockGuard,
+    aws_lock::{check_current_lock_status, AwsLockGuard},
     aws_profile::{AwsFile, ProfileName},
     timer::ObservableTimer,
 };
@@ -73,18 +73,28 @@ async fn main() -> Result<()> {
 
     // Convert 'default' profile to None profile
     let target_profiles: Vec<_> = args.target_profiles.into_iter().map(Into::into).collect();
+    let (locked_profiles, unlocked_profiles) = check_current_lock_status(&target_profiles)?;
+    if !unlocked_profiles.is_empty() {
+        bail!(
+            "profile {} is not locked",
+            unlocked_profiles
+                .iter()
+                .map(|s| format!("'{s}'"))
+                .format(", ")
+        );
+    }
 
     if args.commands.is_empty() {
         unlock_during_specified_duration(
             is_silent,
-            &target_profiles,
+            &locked_profiles,
             Duration::from_secs(args.seconds),
         )
         .await?;
 
         exit(0);
     } else {
-        let code = unlock_during_commands(is_silent, &target_profiles, args.commands)?;
+        let code = unlock_during_commands(is_silent, &locked_profiles, args.commands)?;
         exit(code);
     }
 }
