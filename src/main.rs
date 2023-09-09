@@ -1,9 +1,11 @@
 use anyhow::{bail, Result};
-use aws_unlock::{aws_lock::AwsLockGuard, aws_profile::AwsFile};
-use cancellable_timer::Timer;
+use aws_unlock::{aws_lock::AwsLockGuard, aws_profile::AwsFile, timer::ObservableTimer};
 use clap::{CommandFactory, Parser};
 use itertools::Itertools;
-use std::time::Duration;
+use std::{
+    io::{stdout, Write},
+    time::Duration,
+};
 
 #[derive(clap::Parser)]
 struct Args {
@@ -13,13 +15,32 @@ struct Args {
     #[clap(long, default_value_t = false)]
     lock_all: bool,
 
-    #[clap(long, default_value_t = 60)]
+    #[clap(short, long, default_value_t = 60)]
     seconds: u64,
 
     target_profiles: Vec<String>,
 }
 
+macro_rules! may_print {
+    ($silent:expr) => {
+        if !$silent {
+            print!();
+        }
+    };
+    ($silent:expr, $($args:tt)*) => {
+        if !$silent {
+            print!($($args)*);
+            stdout().flush().expect("failed to flush stdout");
+        }
+    };
+}
+
 macro_rules! may_println {
+    ($silent:expr) => {
+        if !$silent {
+            println!();
+        }
+    };
     ($silent:expr, $($args:tt)*) => {
         if !$silent {
             println!($($args)*);
@@ -27,7 +48,8 @@ macro_rules! may_println {
     };
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args = Args::parse();
 
     if args.lock_all {
@@ -49,7 +71,7 @@ fn main() -> Result<()> {
         .collect();
 
     // prepare timer
-    let (mut timer, canceller) = Timer::new2()?;
+    let (timer, canceller) = ObservableTimer::new()?;
 
     ctrlc::set_handler(move || {
         may_println!(is_silent, "Ctrl+C detected. Locking soon...");
@@ -70,8 +92,23 @@ fn main() -> Result<()> {
         args.seconds
     );
 
-    if timer.sleep(Duration::from_secs(args.seconds)).is_err() {
-        may_println!(is_silent, "timer cancelled.");
+    let res = timer
+        .sleep(
+            Duration::from_secs(args.seconds),
+            Duration::from_millis(1000),
+            |remaining| {
+                may_print!(
+                    is_silent,
+                    "\r{} seconds remaining... ",
+                    remaining.as_secs_f64().ceil()
+                );
+            },
+        )
+        .await;
+
+    match res {
+        Ok(_) => may_println!(is_silent,),
+        Err(_) => may_println!(is_silent, "timer cancelled"),
     }
 
     Ok(())
