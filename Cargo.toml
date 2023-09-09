@@ -1,5 +1,7 @@
 [package]
 name = "aws-unlock"
+description = "Unlock your AWS profile as needed"
+license = "MIT"
 version = "0.1.0"
 edition = "2021"
 
