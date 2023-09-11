@@ -1,4 +1,4 @@
-name: CI
+name: Release
 
 on:
   push:
@@ -54,6 +54,7 @@ jobs:
 
     name: ${{ matrix.channel }}-${{ matrix.target_triple }}
     runs-on: ${{ matrix.os }}
+    needs: create-release
 
     steps:
       - uses: actions/checkout@v3
@@ -68,6 +69,7 @@ jobs:
       - name: "Archive binary"
         run: |
           stem="aws-unlock-${{ needs.create-release.outputs.prog_version }}-${{ matrix.target_triple }}"
+          mkdir -p $stem
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             cp "target/${{ matrix.target_triple }}/release/aws-unlock.exe" "$stem/"
             7z a "$stem.zip" "$stem"
