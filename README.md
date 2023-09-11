@@ -32,6 +32,8 @@ You can install aws-unlock via cargo:
 cargo install aws-unlock
 ```
 
+Alternatively, you can download your binary from [GitHub Release](https://github.com/statiolake/aws-unlock/releases/latest) page.
+
 ## Discraimer
 
 This tool parses and rebuilds your AWS configuration, so it sometimes corrupts
