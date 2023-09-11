@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  create-release:
+    name: create-release
+    runs-on: ubuntu-latest
+
+    outputs:
+      prog_version: ${{ env.PROG_VERSION }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Get the release version from the tag
+        shell: bash
+        if: env.PROG_VERSION == ''
+        run: |
+          echo "PROG_VERSION=$GITHUB_REF_NAME" >> $GITHUB_ENV
+          echo "version is: ${{ env.PROG_VERSION }}"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ env.PROG_VERSION }}
+
+  build-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        target_triple:
+          - x86_64-pc-windows-msvc
+          - x86_64-pc-windows-gnu
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-unknown-linux-gnu
+        include:
+          - channel: stable
+            target_triple: x86_64-pc-windows-msvc
+            os: windows-latest
+          - channel: stable
+            target_triple: x86_64-pc-windows-gnu
+            os: windows-latest
+          - channel: stable
+            target_triple: x86_64-apple-darwin
+            os: macOS-latest
+          - channel: stable
+            target_triple: aarch64-apple-darwin
+            os: macOS-latest
+          - channel: stable
+            target_triple: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+
+    name: ${{ matrix.channel }}-${{ matrix.target_triple }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target_triple }}
+
+      - name: "`cargo build --release --target ${{ matrix.target_triple }}`"
+        run: cargo build --release --target ${{ matrix.target_triple }}
+
+      - name: "Archive binary"
+        run: |
+          stem="aws-unlock-${{ needs.create-release.outputs.prog_version }}-${{ matrix.target_triple }}"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "target/${{ matrix.target_triple }}/release/aws-unlock.exe" "$stem/"
+            7z a "$stem.zip" "$stem"
+            certutil -hashfile "$stem.zip" SHA256 > "$stem.zip.sha256"
+            echo "ASSET=$stem.zip" >> $GITHUB_ENV
+            echo "ASSET_SUM=$stem.zip.sha256" >> $GITHUB_ENV
+          else
+            cp "target/${{ matrix.target_triple }}/release/aws-unlock" "$stem/"
+            tar czf "$stem.tar.gz" "$stem"
+            shasum -a 256 "$stem.tar.gz" > "$stem.tar.gz.sha256"
+            echo "ASSET=$stem.tar.gz" >> $GITHUB_ENV
+            echo "ASSET_SUM=$stem.tar.gz.sha256" >> $GITHUB_ENV
+          fi
+
+      - name: Upload release archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ${{ needs.create-release.outputs.prog_version }} ${{ env.ASSET }} ${{ env.ASSET_SUM }}
