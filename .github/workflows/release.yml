@@ -67,6 +67,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target_triple }}
 
       - name: "Archive binary"
+        shell: bash
         run: |
           stem="aws-unlock-${{ needs.create-release.outputs.prog_version }}-${{ matrix.target_triple }}"
           mkdir -p $stem
