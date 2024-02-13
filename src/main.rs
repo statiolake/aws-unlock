@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use aws_unlock::{
-    aws_lock::{check_current_lock_status, AwsLockGuard},
+    aws_lock::AwsLockGuard,
     aws_profile::{AwsFile, ProfileName},
     timer::ObservableTimer,
 };
@@ -8,7 +8,7 @@ use clap::{CommandFactory, Parser};
 use itertools::Itertools;
 use std::{
     io::{stdout, Write},
-    process::exit,
+    process::ExitCode,
     time::Duration,
 };
 use tokio::process::Command;
@@ -58,11 +58,12 @@ macro_rules! may_println {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<ExitCode> {
     let args = Args::parse();
 
     if args.lock_all {
-        return lock_all();
+        lock_all()?;
+        return Ok(ExitCode::SUCCESS);
     }
 
     if args.target_profiles.is_empty() {
@@ -84,7 +85,7 @@ async fn main() -> Result<()> {
         );
     }
 
-    let exit_code = if args.commands.is_empty() {
+    let exit_code: ExitCode = if args.commands.is_empty() {
         unlock_during_specified_duration(
             is_silent,
             &locked_profiles,
@@ -92,12 +93,51 @@ async fn main() -> Result<()> {
         )
         .await?;
 
-        0
+        ExitCode::SUCCESS
     } else {
         unlock_during_commands(is_silent, &locked_profiles, args.commands).await?
     };
 
-    exit(exit_code);
+    Ok(exit_code)
+}
+
+fn check_current_lock_status(
+    target_profiles: &[ProfileName],
+) -> Result<(Vec<ProfileName>, Vec<ProfileName>)> {
+    let mut locked_profiles = vec![];
+    let mut unlocked_profiles = vec![];
+
+    let mut aws_file = AwsFile::open()?;
+    let profiles = aws_file.parse()?;
+
+    // check all target profiles exist
+    let mut unknown_profiles = vec![];
+    for profile in target_profiles {
+        if !profiles.iter().any(|p| p.name == *profile) {
+            unknown_profiles.push(profile.clone());
+        }
+    }
+    if !unknown_profiles.is_empty() {
+        bail!(
+            "some target profiles not found: {}",
+            unknown_profiles
+                .iter()
+                .map(|s| format!("'{s}'"))
+                .format(", ")
+        )
+    }
+
+    for profile in profiles {
+        if target_profiles.contains(&profile.name) {
+            if profile.is_locked {
+                locked_profiles.push(profile.name)
+            } else {
+                unlocked_profiles.push(profile.name)
+            }
+        }
+    }
+
+    Ok((locked_profiles, unlocked_profiles))
 }
 
 fn lock_all() -> Result<()> {
@@ -160,7 +200,7 @@ async fn unlock_during_commands(
     is_silent: bool,
     target_profiles: &[ProfileName],
     commands: Vec<String>,
-) -> Result<i32> {
+) -> Result<ExitCode> {
     let _guard = AwsLockGuard::unlock(target_profiles, true, !is_silent)?;
 
     ctrlc::set_handler(move || {
@@ -177,5 +217,5 @@ async fn unlock_during_commands(
         .spawn()?;
     let status = child.wait().await?;
 
-    Ok(status.code().unwrap_or(1))
+    Ok(ExitCode::from(status.code().map(|c| c as u8).unwrap_or(1)))
 }

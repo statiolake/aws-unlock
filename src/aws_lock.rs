@@ -39,45 +39,6 @@ impl Drop for AwsLockGuard<'_> {
     }
 }
 
-pub fn check_current_lock_status(
-    target_profiles: &[ProfileName],
-) -> Result<(Vec<ProfileName>, Vec<ProfileName>)> {
-    let mut locked_profiles = vec![];
-    let mut unlocked_profiles = vec![];
-
-    let mut aws_file = AwsFile::open()?;
-    let profiles = aws_file.parse()?;
-
-    // check all target profiles exist
-    let mut unknown_profiles = vec![];
-    for profile in target_profiles {
-        if !profiles.iter().any(|p| p.name == *profile) {
-            unknown_profiles.push(profile.clone());
-        }
-    }
-    if !unknown_profiles.is_empty() {
-        bail!(
-            "some target profiles not found: {}",
-            unknown_profiles
-                .iter()
-                .map(|s| format!("'{s}'"))
-                .format(", ")
-        )
-    }
-
-    for profile in profiles {
-        if target_profiles.contains(&profile.name) {
-            if profile.is_locked {
-                locked_profiles.push(profile.name)
-            } else {
-                unlocked_profiles.push(profile.name)
-            }
-        }
-    }
-
-    Ok((locked_profiles, unlocked_profiles))
-}
-
 fn modify_lock_status(
     target_profiles: &[ProfileName],
     error_if_not_exist: bool,
