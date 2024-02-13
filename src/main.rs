@@ -83,7 +83,7 @@ async fn main() -> Result<ExitCode> {
         bail!("profile {unlocked_profiles} is not locked");
     }
 
-    let exit_code: ExitCode = if args.commands.is_empty() {
+    if args.commands.is_empty() {
         unlock_during_specified_duration(
             is_silent,
             &locked_profiles,
@@ -91,12 +91,21 @@ async fn main() -> Result<ExitCode> {
         )
         .await?;
 
-        ExitCode::SUCCESS
+        Ok(ExitCode::SUCCESS)
     } else {
-        unlock_during_commands(is_silent, &locked_profiles, args.commands).await?
-    };
+        unlock_during_commands(is_silent, &locked_profiles, args.commands).await
+    }
+}
 
-    Ok(exit_code)
+fn lock_all() -> Result<()> {
+    let mut aws_file = AwsFile::open()?;
+    let mut profiles = aws_file.parse()?;
+    profiles
+        .iter_mut()
+        .for_each(|profile| profile.is_locked = true);
+    aws_file.write(&profiles)?;
+
+    Ok(())
 }
 
 fn check_current_lock_status(
@@ -135,17 +144,6 @@ fn check_current_lock_status(
     }
 
     Ok((locked_profiles, unlocked_profiles))
-}
-
-fn lock_all() -> Result<()> {
-    let mut aws_file = AwsFile::open()?;
-    let mut profiles = aws_file.parse()?;
-    profiles
-        .iter_mut()
-        .for_each(|profile| profile.is_locked = true);
-    aws_file.write(&profiles)?;
-
-    Ok(())
 }
 
 async fn unlock_during_specified_duration(

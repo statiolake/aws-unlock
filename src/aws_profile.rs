@@ -215,6 +215,7 @@ impl AwsFile {
 
                     name.into()
                 };
+
                 let region = entry.values.get("region").cloned();
                 let output = entry.values.get("output").cloned();
                 Ok(AwsConfig {
@@ -243,19 +244,21 @@ impl AwsFile {
             .into_iter()
             .map(|entry| {
                 let name = entry.header.into();
-                let get_required_entry = |key| {
+                let get_required = |key| {
                     entry
                         .values
                         .get(key)
-                        .ok_or_else(|| anyhow!("missing key '{key}' in '{name}' credentials",))
-                        .map(|s| s.to_string())
+                        .ok_or_else(|| anyhow!("missing key '{key}' in '{name}' credentials"))
                 };
-                let aws_access_key_id = get_required_entry("aws_access_key_id")?;
-                let aws_secret_access_key = get_required_entry("aws_secret_access_key")?;
-                let aws_session_token = entry.values.get("aws_session_token").cloned();
-                let aws_session_expiration = entry.values.get("aws_session_expiration").cloned();
-                let aws_security_token = entry.values.get("aws_security_token").cloned();
-                let region = entry.values.get("region").cloned();
+                let get_optional = |key| entry.values.get(key);
+
+                let aws_access_key_id = get_required("aws_access_key_id")?.clone();
+                let aws_secret_access_key = get_required("aws_secret_access_key")?.clone();
+                let aws_session_token = get_optional("aws_session_token").cloned();
+                let aws_session_expiration = get_optional("aws_session_expiration").cloned();
+                let aws_security_token = get_optional("aws_security_token").cloned();
+                let region = get_optional("region").cloned();
+
                 Ok(AwsCredential {
                     name,
                     is_production: entry.is_production,
@@ -317,13 +320,17 @@ impl AwsFile {
                 ProfileName::Default => writeln!(self.config, "{}[default]", locked_prefix)?,
             }
 
-            if let Some(region) = &conf.data.region {
-                writeln!(self.config, "{}region = {}", locked_prefix, region)?;
-            }
+            let mut write = |key: &str, value: Option<&str>| -> Result<()> {
+                if let Some(value) = value {
+                    writeln!(self.credentials, "{}{} = {}", locked_prefix, key, value)?;
+                }
 
-            if let Some(output) = &conf.data.output {
-                writeln!(self.config, "{}output = {}", locked_prefix, output)?;
-            }
+                Ok(())
+            };
+
+            let AwsConfigData { region, output, .. } = &conf.data;
+            write("region", region.as_deref())?;
+            write("output", output.as_deref())?;
         }
 
         Ok(())
@@ -351,7 +358,7 @@ impl AwsFile {
             let locked_prefix = if cred.is_locked { "# " } else { "" };
             writeln!(self.credentials, "{}[{}]", locked_prefix, cred.name)?;
 
-            let mut write_key_value_if_needed = |key: &str, value: Option<&str>| -> Result<()> {
+            let mut write = |key: &str, value: Option<&str>| -> Result<()> {
                 if let Some(value) = value {
                     writeln!(self.credentials, "{}{} = {}", locked_prefix, key, value)?;
                 }
@@ -359,21 +366,22 @@ impl AwsFile {
                 Ok(())
             };
 
-            write_key_value_if_needed("aws_access_key_id", Some(&cred.data.aws_access_key_id))?;
-            write_key_value_if_needed(
-                "aws_secret_access_key",
-                Some(&cred.data.aws_secret_access_key),
-            )?;
-            write_key_value_if_needed("aws_session_token", cred.data.aws_session_token.as_deref())?;
-            write_key_value_if_needed(
-                "aws_session_expiration",
-                cred.data.aws_session_expiration.as_deref(),
-            )?;
-            write_key_value_if_needed(
-                "aws_security_token",
-                cred.data.aws_security_token.as_deref(),
-            )?;
-            write_key_value_if_needed("region", cred.data.region.as_deref())?;
+            let AwsCredentialData {
+                aws_access_key_id,
+                aws_secret_access_key,
+                aws_session_token,
+                aws_session_expiration,
+                aws_security_token,
+                region,
+                ..
+            } = &cred.data;
+
+            write("aws_access_key_id", Some(aws_access_key_id))?;
+            write("aws_secret_access_key", Some(aws_secret_access_key))?;
+            write("aws_session_token", aws_session_token.as_deref())?;
+            write("aws_session_expiration", aws_session_expiration.as_deref())?;
+            write("aws_security_token", aws_security_token.as_deref())?;
+            write("region", region.as_deref())?;
         }
 
         Ok(())
