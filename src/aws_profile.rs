@@ -38,70 +38,83 @@ impl fmt::Display for ProfileName {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct AwsProfile {
-    /// Comment lines in config file.
-    pub config_comments: Vec<String>,
-
-    /// Comment lines in credentials file.
-    pub credentials_comments: Vec<String>,
-
-    /// Whether this profile is for production environment or not.
-    pub is_production: bool,
-
-    /// Whether this profile is currently locked or not.
-    pub is_locked: bool,
-
-    /// The profile name. None if it is default profile.
+pub struct WithAwsProfileMetadata<T> {
     pub name: ProfileName,
+    pub is_production: bool,
+    pub is_locked: bool,
+    pub data: T,
+}
 
-    /// `region` in ~/.aws/config.
-    pub config_region: Option<String>,
+impl<T> WithAwsProfileMetadata<T> {
+    pub fn to_ref(&self) -> WithAwsProfileMetadata<&T> {
+        WithAwsProfileMetadata {
+            name: self.name.clone(),
+            is_production: self.is_production,
+            is_locked: self.is_locked,
+            data: &self.data,
+        }
+    }
 
-    /// `output` in ~/.aws/config.
-    pub output: Option<String>,
-
-    /// `aws_access_key_id` in ~/.aws/credentials.
-    pub aws_access_key_id: String,
-
-    /// `aws_secret_access_key` in ~/.aws/credentials.
-    pub aws_secret_access_key: String,
-
-    /// `aws_session_token` in ~/.aws/credentials.
-    pub aws_session_token: Option<String>,
-
-    /// `aws_session_expiration` in ~/.aws/credentials.
-    pub aws_session_expiration: Option<String>,
-
-    /// `aws_security_token` in ~/.aws/credentials.
-    pub aws_security_token: Option<String>,
-
-    /// `aws_security_token_expiration` in ~/.aws/credentials.
-    pub creds_region: Option<String>,
+    pub fn map<U, F>(self, f: F) -> WithAwsProfileMetadata<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        WithAwsProfileMetadata {
+            name: self.name,
+            is_production: self.is_production,
+            is_locked: self.is_locked,
+            data: f(self.data),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-struct AwsConfig {
+pub struct AwsProfileData {
+    conf: AwsConfigData,
+    cred: AwsCredentialData,
+}
+
+pub type AwsProfile = WithAwsProfileMetadata<AwsProfileData>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct AwsConfigData {
+    /// Comment lines in ~/.aws/config.
     comments: Vec<String>,
-    is_production: bool,
-    is_locked: bool,
-    name: ProfileName,
+
+    /// `region` in ~/.aws/config.
     region: Option<String>,
+
+    /// `output` in ~/.aws/config.
     output: Option<String>,
 }
 
+pub type AwsConfig = WithAwsProfileMetadata<AwsConfigData>;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-struct AwsCredential {
+pub struct AwsCredentialData {
+    /// Comment lines in ~/.aws/credentials.
     comments: Vec<String>,
-    is_production: bool,
-    is_locked: bool,
-    name: ProfileName,
+
+    /// `aws_access_key_id` in ~/.aws/credentials.
     aws_access_key_id: String,
+
+    /// `aws_secret_access_key` in ~/.aws/credentials.
     aws_secret_access_key: String,
+
+    /// `aws_session_token` in ~/.aws/credentials.
     aws_session_token: Option<String>,
+
+    /// `aws_session_expiration` in ~/.aws/credentials.
     aws_session_expiration: Option<String>,
+
+    /// `aws_security_token` in ~/.aws/credentials.
     aws_security_token: Option<String>,
+
+    /// `region` in ~/.aws/credentials.
     region: Option<String>,
 }
+
+pub type AwsCredential = WithAwsProfileMetadata<AwsCredentialData>;
 
 #[derive(Debug)]
 pub struct AwsFile {
@@ -170,19 +183,13 @@ impl AwsFile {
                     .ok_or_else(|| anyhow!("credentials '{name}' not found",))?;
 
                 Ok(AwsProfile {
-                    config_comments: conf.comments,
-                    credentials_comments: cred.comments,
                     is_production: conf.is_production || cred.is_production,
                     is_locked: conf.is_locked || cred.is_locked,
                     name: name.clone(),
-                    config_region: conf.region,
-                    output: conf.output,
-                    aws_access_key_id: cred.aws_access_key_id,
-                    aws_secret_access_key: cred.aws_secret_access_key,
-                    aws_session_token: cred.aws_session_token,
-                    aws_session_expiration: cred.aws_session_expiration,
-                    aws_security_token: cred.aws_security_token,
-                    creds_region: cred.region,
+                    data: AwsProfileData {
+                        conf: conf.data,
+                        cred: cred.data,
+                    },
                 })
             })
             .collect()
@@ -210,12 +217,14 @@ impl AwsFile {
                 let region = entry.values.get("region").cloned();
                 let output = entry.values.get("output").cloned();
                 Ok(AwsConfig {
-                    comments: entry.comments,
+                    name,
                     is_production: entry.is_production,
                     is_locked: entry.is_locked,
-                    name,
-                    region,
-                    output,
+                    data: AwsConfigData {
+                        comments: entry.comments,
+                        region,
+                        output,
+                    },
                 })
             })
             .collect()
@@ -233,30 +242,32 @@ impl AwsFile {
             .into_iter()
             .map(|entry| {
                 let name = entry.header.into();
-                let unwrap_entry = |name| {
+                let get_required_entry = |key| {
                     entry
                         .values
-                        .get(name)
-                        .ok_or_else(|| anyhow!("failed to find '{name}' in your credentials"))
+                        .get(key)
+                        .ok_or_else(|| anyhow!("missing key '{key}' in '{name}' credentials",))
                         .map(|s| s.to_string())
                 };
-                let aws_access_key_id = unwrap_entry("aws_access_key_id")?;
-                let aws_secret_access_key = unwrap_entry("aws_secret_access_key")?;
+                let aws_access_key_id = get_required_entry("aws_access_key_id")?;
+                let aws_secret_access_key = get_required_entry("aws_secret_access_key")?;
                 let aws_session_token = entry.values.get("aws_session_token").cloned();
                 let aws_session_expiration = entry.values.get("aws_session_expiration").cloned();
                 let aws_security_token = entry.values.get("aws_security_token").cloned();
                 let region = entry.values.get("region").cloned();
                 Ok(AwsCredential {
-                    comments: entry.comments,
+                    name,
                     is_production: entry.is_production,
                     is_locked: entry.is_locked,
-                    name,
-                    aws_access_key_id,
-                    aws_secret_access_key,
-                    aws_session_token,
-                    aws_session_expiration,
-                    aws_security_token,
-                    region,
+                    data: AwsCredentialData {
+                        comments: entry.comments,
+                        aws_access_key_id,
+                        aws_secret_access_key,
+                        aws_session_token,
+                        aws_session_expiration,
+                        aws_security_token,
+                        region,
+                    },
                 })
             })
             .collect()
@@ -265,29 +276,11 @@ impl AwsFile {
     pub fn write(&mut self, profiles: &[AwsProfile]) -> Result<()> {
         let config: Vec<_> = profiles
             .iter()
-            .map(|profile| AwsConfig {
-                comments: profile.config_comments.clone(),
-                is_production: profile.is_production,
-                is_locked: profile.is_locked,
-                name: profile.name.clone(),
-                region: profile.config_region.clone(),
-                output: profile.output.clone(),
-            })
+            .map(|profile| profile.to_ref().map(|data| data.conf.clone()))
             .collect();
         let credentials: Vec<_> = profiles
             .iter()
-            .map(|profile| AwsCredential {
-                comments: profile.credentials_comments.clone(),
-                is_production: profile.is_production,
-                is_locked: profile.is_locked,
-                name: profile.name.clone(),
-                aws_access_key_id: profile.aws_access_key_id.clone(),
-                aws_secret_access_key: profile.aws_secret_access_key.clone(),
-                aws_session_token: profile.aws_session_token.clone(),
-                aws_session_expiration: profile.aws_session_expiration.clone(),
-                aws_security_token: profile.aws_security_token.clone(),
-                region: profile.creds_region.clone(),
-            })
+            .map(|profile| profile.to_ref().map(|data| data.cred.clone()))
             .collect();
         self.write_config(&config)?;
         self.write_credentials(&credentials)?;
@@ -306,7 +299,7 @@ impl AwsFile {
             }
             first = false;
 
-            for comment in &conf.comments {
+            for comment in &conf.data.comments {
                 writeln!(self.config, "# {}", comment)?;
             }
 
@@ -323,11 +316,11 @@ impl AwsFile {
                 ProfileName::Default => writeln!(self.config, "{}[default]", locked_prefix)?,
             }
 
-            if let Some(region) = &conf.region {
+            if let Some(region) = &conf.data.region {
                 writeln!(self.config, "{}region = {}", locked_prefix, region)?;
             }
 
-            if let Some(output) = &conf.output {
+            if let Some(output) = &conf.data.output {
                 writeln!(self.config, "{}output = {}", locked_prefix, output)?;
             }
         }
@@ -346,7 +339,7 @@ impl AwsFile {
             }
             first = false;
 
-            for comment in &cred.comments {
+            for comment in &cred.data.comments {
                 writeln!(self.credentials, "# {}", comment)?;
             }
 
@@ -355,24 +348,31 @@ impl AwsFile {
             }
 
             let locked_prefix = if cred.is_locked { "# " } else { "" };
-
             writeln!(self.credentials, "{}[{}]", locked_prefix, cred.name)?;
-            let mut write_key_value = |key: &str, value: Option<&str>| -> Result<()> {
+
+            let mut write_key_value_if_needed = |key: &str, value: Option<&str>| -> Result<()> {
                 if let Some(value) = value {
                     writeln!(self.credentials, "{}{} = {}", locked_prefix, key, value)?;
                 }
+
                 Ok(())
             };
 
-            write_key_value("aws_access_key_id", Some(&cred.aws_access_key_id))?;
-            write_key_value("aws_secret_access_key", Some(&cred.aws_secret_access_key))?;
-            write_key_value("aws_session_token", cred.aws_session_token.as_deref())?;
-            write_key_value(
-                "aws_session_expiration",
-                cred.aws_session_expiration.as_deref(),
+            write_key_value_if_needed("aws_access_key_id", Some(&cred.data.aws_access_key_id))?;
+            write_key_value_if_needed(
+                "aws_secret_access_key",
+                Some(&cred.data.aws_secret_access_key),
             )?;
-            write_key_value("aws_security_token", cred.aws_security_token.as_deref())?;
-            write_key_value("region", cred.region.as_deref())?;
+            write_key_value_if_needed("aws_session_token", cred.data.aws_session_token.as_deref())?;
+            write_key_value_if_needed(
+                "aws_session_expiration",
+                cred.data.aws_session_expiration.as_deref(),
+            )?;
+            write_key_value_if_needed(
+                "aws_security_token",
+                cred.data.aws_security_token.as_deref(),
+            )?;
+            write_key_value_if_needed("region", cred.data.region.as_deref())?;
         }
 
         Ok(())
