@@ -209,10 +209,11 @@ impl AwsFile {
                 let name = if entry.header == "default" {
                     ProfileName::Default
                 } else {
-                    match *entry.header.splitn(2, ' ').collect::<Vec<_>>() {
-                        ["profile", name] => name.into(),
-                        _ => bail!("unexpected header in your config: {:?}", entry.header),
-                    }
+                    let ["profile", name] = *entry.header.splitn(2, ' ').collect::<Vec<_>>() else {
+                        bail!("unexpected header in your config: {:?}", entry.header);
+                    };
+
+                    name.into()
                 };
                 let region = entry.values.get("region").cloned();
                 let output = entry.values.get("output").cloned();
