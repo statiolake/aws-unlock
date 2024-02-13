@@ -62,13 +62,11 @@ fn modify_lock_status(
             .collect();
 
         if !unknown_profiles.is_empty() {
-            bail!(
-                "unknown profiles: {}",
-                unknown_profiles
-                    .into_iter()
-                    .map(|s| format!("'{s}'"))
-                    .format(", ")
-            );
+            let unknown_profiles = unknown_profiles
+                .into_iter()
+                .map(|s| format!("'{s}'"))
+                .format(", ");
+            bail!("unknown profiles: {unknown_profiles}",);
         }
     }
 

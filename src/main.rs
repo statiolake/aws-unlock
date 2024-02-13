@@ -76,13 +76,11 @@ async fn main() -> Result<ExitCode> {
     let target_profiles: Vec<_> = args.target_profiles.into_iter().map(Into::into).collect();
     let (locked_profiles, unlocked_profiles) = check_current_lock_status(&target_profiles)?;
     if !unlocked_profiles.is_empty() {
-        bail!(
-            "profile {} is not locked",
-            unlocked_profiles
-                .iter()
-                .map(|s| format!("'{s}'"))
-                .format(", ")
-        );
+        let unlocked_profiles = unlocked_profiles
+            .iter()
+            .map(|s| format!("'{s}'"))
+            .format(", ");
+        bail!("profile {unlocked_profiles} is not locked");
     }
 
     let exit_code: ExitCode = if args.commands.is_empty() {
@@ -117,14 +115,13 @@ fn check_current_lock_status(
             unknown_profiles.push(profile.clone());
         }
     }
+
     if !unknown_profiles.is_empty() {
-        bail!(
-            "some target profiles not found: {}",
-            unknown_profiles
-                .iter()
-                .map(|s| format!("'{s}'"))
-                .format(", ")
-        )
+        let unknown_profiles = unknown_profiles
+            .iter()
+            .map(|s| format!("'{s}'"))
+            .format(", ");
+        bail!("some target profiles not found: {unknown_profiles}",)
     }
 
     for profile in profiles {
