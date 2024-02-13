@@ -210,7 +210,7 @@ impl AwsFile {
                     ProfileName::Default
                 } else {
                     match *entry.header.splitn(2, ' ').collect::<Vec<_>>() {
-                        [lit_profile, name] if lit_profile == "profile" => name.into(),
+                        ["profile", name] => name.into(),
                         _ => bail!("unexpected header in your config: {:?}", entry.header),
                     }
                 };
