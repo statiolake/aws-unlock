@@ -55,7 +55,7 @@ pub struct AwsProfile {
     pub name: ProfileName,
 
     /// `region` in ~/.aws/config.
-    pub region: Option<String>,
+    pub config_region: Option<String>,
 
     /// `output` in ~/.aws/config.
     pub output: Option<String>,
@@ -65,6 +65,18 @@ pub struct AwsProfile {
 
     /// `aws_secret_access_key` in ~/.aws/credentials.
     pub aws_secret_access_key: String,
+
+    /// `aws_session_token` in ~/.aws/credentials.
+    pub aws_session_token: Option<String>,
+
+    /// `aws_session_expiration` in ~/.aws/credentials.
+    pub aws_session_expiration: Option<String>,
+
+    /// `aws_security_token` in ~/.aws/credentials.
+    pub aws_security_token: Option<String>,
+
+    /// `aws_security_token_expiration` in ~/.aws/credentials.
+    pub creds_region: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -85,6 +97,10 @@ struct AwsCredential {
     name: ProfileName,
     aws_access_key_id: String,
     aws_secret_access_key: String,
+    aws_session_token: Option<String>,
+    aws_session_expiration: Option<String>,
+    aws_security_token: Option<String>,
+    region: Option<String>,
 }
 
 #[derive(Debug)]
@@ -159,10 +175,14 @@ impl AwsFile {
                     is_production: conf.is_production || cred.is_production,
                     is_locked: conf.is_locked || cred.is_locked,
                     name: name.clone(),
-                    region: conf.region,
+                    config_region: conf.region,
                     output: conf.output,
                     aws_access_key_id: cred.aws_access_key_id,
                     aws_secret_access_key: cred.aws_secret_access_key,
+                    aws_session_token: cred.aws_session_token,
+                    aws_session_expiration: cred.aws_session_expiration,
+                    aws_security_token: cred.aws_security_token,
+                    creds_region: cred.region,
                 })
             })
             .collect()
@@ -213,20 +233,19 @@ impl AwsFile {
             .into_iter()
             .map(|entry| {
                 let name = entry.header.into();
-                let aws_access_key_id = entry
-                    .values
-                    .get("aws_access_key_id")
-                    .ok_or_else(|| {
-                        anyhow!("failed to find 'aws_access_key_id' in your credentials")
-                    })?
-                    .to_string();
-                let aws_secret_access_key = entry
-                    .values
-                    .get("aws_secret_access_key")
-                    .ok_or_else(|| {
-                        anyhow!("failed to find 'aws_secret_access_key' in your credentials")
-                    })?
-                    .to_string();
+                let unwrap_entry = |name| {
+                    entry
+                        .values
+                        .get(name)
+                        .ok_or_else(|| anyhow!("failed to find '{name}' in your credentials"))
+                        .map(|s| s.to_string())
+                };
+                let aws_access_key_id = unwrap_entry("aws_access_key_id")?;
+                let aws_secret_access_key = unwrap_entry("aws_secret_access_key")?;
+                let aws_session_token = entry.values.get("aws_session_token").cloned();
+                let aws_session_expiration = entry.values.get("aws_session_expiration").cloned();
+                let aws_security_token = entry.values.get("aws_security_token").cloned();
+                let region = entry.values.get("region").cloned();
                 Ok(AwsCredential {
                     comments: entry.comments,
                     is_production: entry.is_production,
@@ -234,6 +253,10 @@ impl AwsFile {
                     name,
                     aws_access_key_id,
                     aws_secret_access_key,
+                    aws_session_token,
+                    aws_session_expiration,
+                    aws_security_token,
+                    region,
                 })
             })
             .collect()
@@ -247,7 +270,7 @@ impl AwsFile {
                 is_production: profile.is_production,
                 is_locked: profile.is_locked,
                 name: profile.name.clone(),
-                region: profile.region.clone(),
+                region: profile.config_region.clone(),
                 output: profile.output.clone(),
             })
             .collect();
@@ -260,6 +283,10 @@ impl AwsFile {
                 name: profile.name.clone(),
                 aws_access_key_id: profile.aws_access_key_id.clone(),
                 aws_secret_access_key: profile.aws_secret_access_key.clone(),
+                aws_session_token: profile.aws_session_token.clone(),
+                aws_session_expiration: profile.aws_session_expiration.clone(),
+                aws_security_token: profile.aws_security_token.clone(),
+                region: profile.creds_region.clone(),
             })
             .collect();
         self.write_config(&config)?;
@@ -330,16 +357,22 @@ impl AwsFile {
             let locked_prefix = if cred.is_locked { "# " } else { "" };
 
             writeln!(self.credentials, "{}[{}]", locked_prefix, cred.name)?;
-            writeln!(
-                self.credentials,
-                "{}aws_access_key_id = {}",
-                locked_prefix, cred.aws_access_key_id
+            let mut write_key_value = |key: &str, value: Option<&str>| -> Result<()> {
+                if let Some(value) = value {
+                    writeln!(self.credentials, "{}{} = {}", locked_prefix, key, value)?;
+                }
+                Ok(())
+            };
+
+            write_key_value("aws_access_key_id", Some(&cred.aws_access_key_id))?;
+            write_key_value("aws_secret_access_key", Some(&cred.aws_secret_access_key))?;
+            write_key_value("aws_session_token", cred.aws_session_token.as_deref())?;
+            write_key_value(
+                "aws_session_expiration",
+                cred.aws_session_expiration.as_deref(),
             )?;
-            writeln!(
-                self.credentials,
-                "{}aws_secret_access_key = {}",
-                locked_prefix, cred.aws_secret_access_key
-            )?;
+            write_key_value("aws_security_token", cred.aws_security_token.as_deref())?;
+            write_key_value("region", cred.region.as_deref())?;
         }
 
         Ok(())
