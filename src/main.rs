@@ -8,9 +8,10 @@ use clap::{CommandFactory, Parser};
 use itertools::Itertools;
 use std::{
     io::{stdout, Write},
-    process::{exit, Command},
+    process::exit,
     time::Duration,
 };
+use tokio::process::Command;
 
 #[derive(clap::Parser)]
 struct Args {
@@ -71,7 +72,6 @@ async fn main() -> Result<()> {
 
     let is_silent = args.silent;
 
-    // Convert 'default' profile to None profile
     let target_profiles: Vec<_> = args.target_profiles.into_iter().map(Into::into).collect();
     let (locked_profiles, unlocked_profiles) = check_current_lock_status(&target_profiles)?;
     if !unlocked_profiles.is_empty() {
@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
         );
     }
 
-    if args.commands.is_empty() {
+    let exit_code = if args.commands.is_empty() {
         unlock_during_specified_duration(
             is_silent,
             &locked_profiles,
@@ -92,11 +92,12 @@ async fn main() -> Result<()> {
         )
         .await?;
 
-        exit(0);
+        0
     } else {
-        let code = unlock_during_commands(is_silent, &locked_profiles, args.commands)?;
-        exit(code);
-    }
+        unlock_during_commands(is_silent, &locked_profiles, args.commands).await?
+    };
+
+    exit(exit_code);
 }
 
 fn lock_all() -> Result<()> {
@@ -155,7 +156,7 @@ async fn unlock_during_specified_duration(
     Ok(())
 }
 
-fn unlock_during_commands(
+async fn unlock_during_commands(
     is_silent: bool,
     target_profiles: &[ProfileName],
     commands: Vec<String>,
@@ -174,7 +175,7 @@ fn unlock_during_commands(
     let mut child = Command::new(commands[0].as_str())
         .args(&commands[1..])
         .spawn()?;
-    let status = child.wait()?;
+    let status = child.wait().await?;
 
     Ok(status.code().unwrap_or(1))
 }
