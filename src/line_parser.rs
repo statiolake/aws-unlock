@@ -1,4 +1,4 @@
-use anyhow::{bail, Ok, Result};
+use anyhow::{anyhow, bail, Ok, Result};
 use std::{collections::HashMap, iter::from_fn};
 
 use crate::line_lexer::EntryLine;
@@ -77,7 +77,7 @@ impl<'a> EntryLineParser<'a> {
             }
         }
 
-        bail!("unexpected EOF while scanning is_production");
+        Err(anyhow!("unexpected EOF while scanning is_production"))
     }
 
     fn parse_is_locked(&mut self) -> Result<(Vec<String>, bool)> {
@@ -102,7 +102,7 @@ impl<'a> EntryLineParser<'a> {
             }
         }
 
-        bail!("unexpected EOF while scanning is_locked");
+        Err(anyhow!("unexpected EOF while scanning is_locked"))
     }
 
     fn parse_header(&mut self, is_locked: bool) -> Result<(Vec<String>, String)> {
@@ -136,7 +136,7 @@ impl<'a> EntryLineParser<'a> {
             }
         }
 
-        bail!("unexpected EOF while scanning header");
+        Err(anyhow!("unexpected EOF while scanning header"))
     }
 
     fn parse_values(&mut self, is_locked: bool) -> Result<(Vec<String>, HashMap<String, String>)> {
