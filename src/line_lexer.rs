@@ -1,4 +1,4 @@
-use anyhow::{bail, Ok, Result};
+use anyhow::{anyhow, Ok, Result};
 
 #[derive(Debug, Clone)]
 pub struct EntryLineLexer<'a> {
@@ -86,6 +86,6 @@ fn tokenize_uncommented(line: &str) -> Result<EntryLine> {
     } else if line.trim() == "" {
         Ok(EntryLine::Empty)
     } else {
-        bail!("unexpected line: {:?}", line);
+        Err(anyhow!("unexpected line: {:?}", line))
     }
 }
