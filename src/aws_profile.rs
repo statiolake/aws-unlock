@@ -322,7 +322,7 @@ impl AwsFile {
 
             let mut write = |key: &str, value: Option<&str>| -> Result<()> {
                 if let Some(value) = value {
-                    writeln!(self.credentials, "{}{} = {}", locked_prefix, key, value)?;
+                    writeln!(self.config, "{}{} = {}", locked_prefix, key, value)?;
                 }
 
                 Ok(())
