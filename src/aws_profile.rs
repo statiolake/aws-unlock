@@ -70,8 +70,8 @@ impl<T> WithAwsProfileMetadata<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AwsProfileData {
-    conf: AwsConfigData,
-    cred: AwsCredentialData,
+    pub conf: AwsConfigData,
+    pub cred: AwsCredentialData,
 }
 
 pub type AwsProfile = WithAwsProfileMetadata<AwsProfileData>;
@@ -79,13 +79,13 @@ pub type AwsProfile = WithAwsProfileMetadata<AwsProfileData>;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AwsConfigData {
     /// Comment lines in ~/.aws/config.
-    comments: Vec<String>,
+    pub comments: Vec<String>,
 
     /// `region` in ~/.aws/config.
-    region: Option<String>,
+    pub region: Option<String>,
 
     /// `output` in ~/.aws/config.
-    output: Option<String>,
+    pub output: Option<String>,
 }
 
 pub type AwsConfig = WithAwsProfileMetadata<AwsConfigData>;
@@ -93,25 +93,25 @@ pub type AwsConfig = WithAwsProfileMetadata<AwsConfigData>;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AwsCredentialData {
     /// Comment lines in ~/.aws/credentials.
-    comments: Vec<String>,
+    pub comments: Vec<String>,
 
     /// `aws_access_key_id` in ~/.aws/credentials.
-    aws_access_key_id: String,
+    pub aws_access_key_id: String,
 
     /// `aws_secret_access_key` in ~/.aws/credentials.
-    aws_secret_access_key: String,
+    pub aws_secret_access_key: String,
 
     /// `aws_session_token` in ~/.aws/credentials.
-    aws_session_token: Option<String>,
+    pub aws_session_token: Option<String>,
 
     /// `aws_session_expiration` in ~/.aws/credentials.
-    aws_session_expiration: Option<String>,
+    pub aws_session_expiration: Option<String>,
 
     /// `aws_security_token` in ~/.aws/credentials.
-    aws_security_token: Option<String>,
+    pub aws_security_token: Option<String>,
 
     /// `region` in ~/.aws/credentials.
-    region: Option<String>,
+    pub region: Option<String>,
 }
 
 pub type AwsCredential = WithAwsProfileMetadata<AwsCredentialData>;

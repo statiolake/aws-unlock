@@ -6,11 +6,12 @@ use std::{
 use anyhow::{bail, Result};
 use itertools::Itertools;
 
-use crate::aws_profile::{AwsFile, ProfileName};
+use crate::aws_profile::{AwsFile, AwsProfile, ProfileName};
 
 #[derive(Debug)]
 pub struct AwsLockGuard<'a> {
-    target_profiles: &'a [ProfileName],
+    pub target_profiles: &'a [ProfileName],
+    pub profiles: Vec<AwsProfile>,
 }
 
 impl<'a> AwsLockGuard<'a> {
@@ -19,13 +20,17 @@ impl<'a> AwsLockGuard<'a> {
         error_if_not_exist: bool,
         warn_on_production: bool,
     ) -> Result<Self> {
-        modify_lock_status(
+        let profiles = modify_lock_status(
             target_profiles,
             error_if_not_exist,
             warn_on_production,
             false,
         )?;
-        Ok(Self { target_profiles })
+
+        Ok(Self {
+            target_profiles,
+            profiles,
+        })
     }
 
     pub fn lock(self) {
@@ -44,7 +49,7 @@ fn modify_lock_status(
     error_if_not_exist: bool,
     warn_on_production: bool,
     lock: bool,
-) -> Result<()> {
+) -> Result<Vec<AwsProfile>> {
     let mut aws_file = AwsFile::open()?;
 
     let mut profiles = aws_file.parse()?;
@@ -105,5 +110,5 @@ fn modify_lock_status(
     aws_file.write(&profiles)?;
     aws_file.flush()?;
 
-    Ok(())
+    Ok(profiles)
 }

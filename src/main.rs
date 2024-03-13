@@ -7,6 +7,7 @@ use aws_unlock::{
 use clap::{CommandFactory, Parser};
 use itertools::Itertools;
 use std::{
+    collections::HashMap,
     io::{stdout, Write},
     process::ExitCode,
     time::Duration,
@@ -196,7 +197,32 @@ async fn unlock_during_commands(
     target_profiles: &[ProfileName],
     commands: Vec<String>,
 ) -> Result<ExitCode> {
-    let _guard = AwsLockGuard::unlock(target_profiles, true, !is_silent)?;
+    let guard = AwsLockGuard::unlock(target_profiles, true, !is_silent)?;
+
+    let mut envvars = HashMap::new();
+    if guard.target_profiles.len() == 1 {
+        let profile = guard
+            .profiles
+            .iter()
+            .find(|p| p.name == guard.target_profiles[0])
+            .expect("internal error: failed to find target profile");
+
+        if let ProfileName::Named(name) = &profile.name {
+            envvars.insert("AWS_PROFILE", name.clone());
+        }
+
+        envvars.insert(
+            "AWS_ACCESS_KEY_ID",
+            profile.data.cred.aws_access_key_id.clone(),
+        );
+        envvars.insert(
+            "AWS_SECRET_ACCESS_KEY",
+            profile.data.cred.aws_secret_access_key.clone(),
+        );
+        if let Some(token) = &profile.data.cred.aws_session_token {
+            envvars.insert("AWS_SESSION_TOKEN", token.clone());
+        }
+    }
 
     ctrlc::set_handler(move || {
         // Signaling SIGINT to all group processes is the job of the terminal. All we have to do
@@ -209,6 +235,7 @@ async fn unlock_during_commands(
 
     let mut child = Command::new(commands[0].as_str())
         .args(&commands[1..])
+        .envs(envvars)
         .spawn()?;
     let status = child.wait().await?;
 
