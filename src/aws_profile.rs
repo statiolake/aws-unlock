@@ -76,7 +76,7 @@ pub struct AwsProfileData {
 
 pub type AwsProfile = WithAwsProfileMetadata<AwsProfileData>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct AwsConfigData {
     /// Comment lines in ~/.aws/config.
     pub comments: Vec<String>,
@@ -175,20 +175,22 @@ impl AwsFile {
         names
             .into_iter()
             .map(|name| {
-                let conf = config
+                let (conf_is_production, conf_is_locked, conf_data) = config
                     .remove(name)
-                    .ok_or_else(|| anyhow!("config '{name}' not found",))?;
-                let cred = credentials
+                    .map(|conf| (conf.is_production, conf.is_locked, conf.data))
+                    .unwrap_or_default();
+                let (cred_is_production, cred_is_locked, cred_data) = credentials
                     .remove(name)
+                    .map(|cred| (cred.is_production, cred.is_locked, cred.data))
                     .ok_or_else(|| anyhow!("credentials '{name}' not found",))?;
 
                 Ok(AwsProfile {
-                    is_production: conf.is_production || cred.is_production,
-                    is_locked: conf.is_locked || cred.is_locked,
+                    is_production: conf_is_production || cred_is_production,
+                    is_locked: conf_is_locked || cred_is_locked,
                     name: name.clone(),
                     data: AwsProfileData {
-                        conf: conf.data,
-                        cred: cred.data,
+                        conf: conf_data,
+                        cred: cred_data,
                     },
                 })
             })
