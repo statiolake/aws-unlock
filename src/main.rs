@@ -22,6 +22,9 @@ struct Args {
     #[clap(long, default_value_t = false)]
     lock_all: bool,
 
+    #[clap(long, default_value_t = false)]
+    list: bool,
+
     #[clap(short, long, default_value_t = 60)]
     seconds: u64,
 
@@ -67,6 +70,11 @@ async fn main() -> Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    if args.list {
+        list()?;
+        return Ok(ExitCode::SUCCESS);
+    }
+
     if args.target_profiles.is_empty() {
         Args::command().print_long_help()?;
         bail!("no target profiles are specified.");
@@ -96,6 +104,17 @@ async fn main() -> Result<ExitCode> {
     } else {
         unlock_during_commands(is_silent, &locked_profiles, args.commands).await
     }
+}
+
+fn list() -> Result<()> {
+    let mut aws_file = AwsFile::open()?;
+    let profiles = aws_file.parse()?;
+
+    for profile in &profiles {
+        println!("{}", profile.name);
+    }
+
+    Ok(())
 }
 
 fn lock_all() -> Result<()> {
