@@ -241,7 +241,7 @@ async fn unlock_during_commands(
         if let Some(token) = &profile.data.cred.aws_session_token {
             envvars.insert("AWS_SESSION_TOKEN", token.clone());
         }
-        
+
         // Set AWS_REGION from profile if available
         if let Some(region) = &profile.data.conf.region {
             envvars.insert("AWS_REGION", region.clone());
