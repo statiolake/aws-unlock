@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use aws_unlock::{
     aws_lock::AwsLockGuard,
-    aws_profile::{AwsFile, ProfileName},
+    aws_profile::{AwsFile, AwsProfile, ProfileName},
     timer::ObservableTimer,
 };
 use clap::{CommandFactory, Parser};
@@ -24,6 +24,9 @@ struct Args {
 
     #[clap(long, default_value_t = false)]
     list: bool,
+
+    #[clap(long, default_value_t = false)]
+    init_if_missing: bool,
 
     #[clap(short, long, default_value_t = 60)]
     seconds: u64,
@@ -81,8 +84,12 @@ async fn main() -> Result<ExitCode> {
     }
 
     let is_silent = args.silent;
+    let init_if_missing = args.init_if_missing;
 
     let target_profiles: Vec<_> = args.target_profiles.into_iter().map(Into::into).collect();
+    if init_if_missing {
+        init_missing_profiles(is_silent, &target_profiles)?;
+    }
     let (locked_profiles, unlocked_profiles) = check_current_lock_status(&target_profiles)?;
     if !unlocked_profiles.is_empty() {
         let unlocked_profiles = unlocked_profiles
@@ -128,6 +135,48 @@ fn lock_all() -> Result<()> {
     Ok(())
 }
 
+fn init_missing_profiles(is_silent: bool, target_profiles: &[ProfileName]) -> Result<()> {
+    let mut aws_file = AwsFile::open()?;
+    let mut profiles = aws_file.parse()?;
+
+    let missing_profiles = target_profiles
+        .iter()
+        .filter(|profile| profiles.iter().all(|p| **profile != p.name))
+        .collect_vec();
+
+    if missing_profiles.is_empty() {
+        return Ok(());
+    }
+
+    may_println!(
+        is_silent,
+        "Initializing missing profiles: {}",
+        missing_profiles
+            .iter()
+            .map(|s| format!("'{s}'"))
+            .format(", ")
+    );
+
+    for profile_name in missing_profiles {
+        // Heuristic to determine if the profile is production
+        let is_production =
+            matches!(profile_name, ProfileName::Named(name) if name.ends_with("production"));
+        let empty_profile = AwsProfile {
+            name: profile_name.clone(),
+            data: Default::default(),
+            is_locked: true,
+            is_production,
+        };
+
+        profiles.push(empty_profile);
+    }
+
+    aws_file.write(&profiles)?;
+    aws_file.flush()?;
+
+    Ok(())
+}
+
 fn check_current_lock_status(
     target_profiles: &[ProfileName],
 ) -> Result<(Vec<ProfileName>, Vec<ProfileName>)> {
@@ -146,20 +195,18 @@ fn check_current_lock_status(
     }
 
     if !unknown_profiles.is_empty() {
-        let unknown_profiles = unknown_profiles
+        let unknown_profiles_fmt = unknown_profiles
             .iter()
             .map(|s| format!("'{s}'"))
             .format(", ");
-        bail!("some target profiles not found: {unknown_profiles}",)
+        bail!("some target profiles not found: {unknown_profiles_fmt}",)
     }
 
     for profile in profiles {
-        if target_profiles.contains(&profile.name) {
-            if profile.is_locked {
-                locked_profiles.push(profile.name)
-            } else {
-                unlocked_profiles.push(profile.name)
-            }
+        if profile.is_locked {
+            locked_profiles.push(profile.name)
+        } else {
+            unlocked_profiles.push(profile.name)
         }
     }
 

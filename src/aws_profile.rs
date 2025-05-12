@@ -68,7 +68,7 @@ impl<T> WithAwsProfileMetadata<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct AwsProfileData {
     pub conf: AwsConfigData,
     pub cred: AwsCredentialData,
@@ -90,7 +90,7 @@ pub struct AwsConfigData {
 
 pub type AwsConfig = WithAwsProfileMetadata<AwsConfigData>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct AwsCredentialData {
     /// Comment lines in ~/.aws/credentials.
     pub comments: Vec<String>,
