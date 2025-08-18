@@ -212,6 +212,10 @@ fn check_current_lock_status(
     }
 
     for profile in profiles {
+        if !target_profiles.contains(&profile.name) {
+            continue;
+        }
+
         if profile.is_locked {
             locked_profiles.push(profile.name)
         } else {
