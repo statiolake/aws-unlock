@@ -28,6 +28,9 @@ struct Args {
     #[clap(long, default_value_t = false)]
     init_if_missing: bool,
 
+    #[clap(long, default_value_t = false)]
+    keep_unlocked_during_run: bool,
+
     #[clap(short, long, default_value_t = 60)]
     seconds: u64,
 
@@ -109,7 +112,13 @@ async fn main() -> Result<ExitCode> {
 
         Ok(ExitCode::SUCCESS)
     } else {
-        unlock_during_commands(is_silent, &locked_profiles, args.commands).await
+        unlock_during_commands(
+            is_silent,
+            &locked_profiles,
+            args.commands,
+            args.keep_unlocked_during_run,
+        )
+        .await
     }
 }
 
@@ -262,6 +271,7 @@ async fn unlock_during_commands(
     is_silent: bool,
     target_profiles: &[ProfileName],
     commands: Vec<String>,
+    keep_unlocked_during_run: bool,
 ) -> Result<ExitCode> {
     let guard = AwsLockGuard::unlock(target_profiles, true, !is_silent)?;
 
@@ -272,10 +282,6 @@ async fn unlock_during_commands(
             .iter()
             .find(|p| p.name == guard.target_profiles[0])
             .expect("internal error: failed to find target profile");
-
-        if let ProfileName::Named(name) = &profile.name {
-            envvars.insert("AWS_PROFILE", name.clone());
-        }
 
         envvars.insert(
             "AWS_ACCESS_KEY_ID",
@@ -295,6 +301,10 @@ async fn unlock_during_commands(
         } else if let Some(region) = &profile.data.cred.region {
             envvars.insert("AWS_REGION", region.clone());
         }
+    }
+
+    if !keep_unlocked_during_run {
+        drop(guard);
     }
 
     ctrlc::set_handler(move || {
