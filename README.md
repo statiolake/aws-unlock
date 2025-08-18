@@ -15,13 +15,18 @@ command will unlock `example-profile` for 60 seconds:
 aws-unlock example-profile -s 60
 ```
 
-## Usage 2 - Unlock specific profiles until specific command completes
+## Usage 2 - Run commands with AWS credentials in environment variables
 
-You can also specify commands instead of a fixed time. This is useful if you
-don't know how long the command will take.
+You can run commands with AWS credentials automatically set in environment variables. By default, credentials remain locked and are only temporarily accessed to set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, and AWS_REGION:
 
 ```
 aws-unlock example-profile -- terraform plan
+```
+
+If you need the credentials to remain unlocked during command execution (e.g., for interactive authentication), use the `--keep-unlocked-during-run` flag:
+
+```
+aws-unlock example-profile --keep-unlocked-during-run -- aws sso login
 ```
 
 ## Install
