@@ -45,7 +45,7 @@ impl<'a> EntryLineLexer<'a> {
     }
 }
 
-fn tokenize_commented(line: &str) -> EntryLine {
+fn tokenize_commented(line: &str) -> EntryLine<'_> {
     let trimmed = line.trim()[1..].trim();
     if trimmed == "production" {
         EntryLine::ProductionMarker
@@ -69,7 +69,7 @@ fn tokenize_commented(line: &str) -> EntryLine {
     }
 }
 
-fn tokenize_uncommented(line: &str) -> Result<EntryLine> {
+fn tokenize_uncommented(line: &str) -> Result<EntryLine<'_>> {
     if line.starts_with('[') && line.ends_with(']') {
         // Header
         Ok(EntryLine::Header(&line[1..line.len() - 1]))

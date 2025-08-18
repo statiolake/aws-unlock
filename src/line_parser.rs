@@ -180,11 +180,11 @@ impl<'a> EntryLineParser<'a> {
         self.index == self.lines.len()
     }
 
-    fn peek_line(&self) -> Option<&EntryLine> {
+    fn peek_line(&self) -> Option<&EntryLine<'_>> {
         self.lines.get(self.index)
     }
 
-    fn next_line(&mut self) -> Option<&EntryLine> {
+    fn next_line(&mut self) -> Option<&EntryLine<'_>> {
         let res = self.lines.get(self.index);
         if self.index < self.lines.len() {
             self.index += 1;
