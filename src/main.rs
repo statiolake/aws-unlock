@@ -16,22 +16,22 @@ use tokio::process::Command;
 
 #[derive(clap::Parser)]
 struct Args {
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = false, help = "Suppress output messages")]
     silent: bool,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = false, help = "Lock all profiles")]
     lock_all: bool,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = false, help = "List all profiles")]
     list: bool,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = false, help = "Create missing profiles if they don't exist")]
     init_if_missing: bool,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = false, help = "Keep credentials unlocked during command execution")]
     keep_unlocked_during_run: bool,
 
-    #[clap(short, long, default_value_t = 60)]
+    #[clap(short, long, default_value_t = 60, help = "Duration to unlock profiles in seconds")]
     seconds: u64,
 
     target_profiles: Vec<String>,
