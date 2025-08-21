@@ -306,7 +306,7 @@ impl AwsFile {
             first = false;
 
             for comment in &conf.data.comments {
-                writeln!(self.config, "# {}", comment)?;
+                writeln!(self.config, "# {comment}")?;
             }
 
             if conf.is_production {
@@ -317,14 +317,14 @@ impl AwsFile {
 
             match &conf.name {
                 ProfileName::Named(name) => {
-                    writeln!(self.config, "{}[profile {}]", locked_prefix, name)?
+                    writeln!(self.config, "{locked_prefix}[profile {name}]")?
                 }
-                ProfileName::Default => writeln!(self.config, "{}[default]", locked_prefix)?,
+                ProfileName::Default => writeln!(self.config, "{locked_prefix}[default]")?,
             }
 
             let mut write = |key: &str, value: Option<&str>| -> Result<()> {
                 if let Some(value) = value {
-                    writeln!(self.config, "{}{} = {}", locked_prefix, key, value)?;
+                    writeln!(self.config, "{locked_prefix}{key} = {value}")?;
                 }
 
                 Ok(())
@@ -350,7 +350,7 @@ impl AwsFile {
             first = false;
 
             for comment in &cred.data.comments {
-                writeln!(self.credentials, "# {}", comment)?;
+                writeln!(self.credentials, "# {comment}")?;
             }
 
             if cred.is_production {
@@ -362,7 +362,7 @@ impl AwsFile {
 
             let mut write = |key: &str, value: Option<&str>| -> Result<()> {
                 if let Some(value) = value {
-                    writeln!(self.credentials, "{}{} = {}", locked_prefix, key, value)?;
+                    writeln!(self.credentials, "{locked_prefix}{key} = {value}")?;
                 }
 
                 Ok(())

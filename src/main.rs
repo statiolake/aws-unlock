@@ -16,19 +16,35 @@ use tokio::process::Command;
 
 #[derive(clap::Parser)]
 struct Args {
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = false, help = "Suppress output messages")]
     silent: bool,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = false, help = "Lock all profiles")]
     lock_all: bool,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = false, help = "List all profiles")]
     list: bool,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(
+        long,
+        default_value_t = false,
+        help = "Create missing profiles if they don't exist"
+    )]
     init_if_missing: bool,
 
-    #[clap(short, long, default_value_t = 60)]
+    #[clap(
+        long,
+        default_value_t = false,
+        help = "Keep credentials unlocked during command execution"
+    )]
+    keep_unlocked_during_run: bool,
+
+    #[clap(
+        short,
+        long,
+        default_value_t = 60,
+        help = "Duration to unlock profiles in seconds"
+    )]
     seconds: u64,
 
     target_profiles: Vec<String>,
@@ -109,7 +125,13 @@ async fn main() -> Result<ExitCode> {
 
         Ok(ExitCode::SUCCESS)
     } else {
-        unlock_during_commands(is_silent, &locked_profiles, args.commands).await
+        unlock_during_commands(
+            is_silent,
+            &locked_profiles,
+            args.commands,
+            args.keep_unlocked_during_run,
+        )
+        .await
     }
 }
 
@@ -203,6 +225,10 @@ fn check_current_lock_status(
     }
 
     for profile in profiles {
+        if !target_profiles.contains(&profile.name) {
+            continue;
+        }
+
         if profile.is_locked {
             locked_profiles.push(profile.name)
         } else {
@@ -262,6 +288,7 @@ async fn unlock_during_commands(
     is_silent: bool,
     target_profiles: &[ProfileName],
     commands: Vec<String>,
+    keep_unlocked_during_run: bool,
 ) -> Result<ExitCode> {
     let guard = AwsLockGuard::unlock(target_profiles, true, !is_silent)?;
 
@@ -272,10 +299,6 @@ async fn unlock_during_commands(
             .iter()
             .find(|p| p.name == guard.target_profiles[0])
             .expect("internal error: failed to find target profile");
-
-        if let ProfileName::Named(name) = &profile.name {
-            envvars.insert("AWS_PROFILE", name.clone());
-        }
 
         envvars.insert(
             "AWS_ACCESS_KEY_ID",
@@ -295,6 +318,10 @@ async fn unlock_during_commands(
         } else if let Some(region) = &profile.data.cred.region {
             envvars.insert("AWS_REGION", region.clone());
         }
+    }
+
+    if !keep_unlocked_during_run {
+        drop(guard);
     }
 
     ctrlc::set_handler(move || {
